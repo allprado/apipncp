@@ -12,30 +12,34 @@
 
   <div class="card p-4 shadow-sm mb-4">
     <div class="row g-3">
-      <div class="col-md-3">
+      <div class="col-md-2">
         <label class="form-label">Data Inicial</label>
         <input id="dataInicial" type="date" class="form-control" required>
       </div>
-      <div class="col-md-3">
+      <div class="col-md-2">
         <label class="form-label">Data Final</label>
         <input id="dataFinal" type="date" class="form-control" required>
       </div>
-      <div class="col-md-3">
+      <div class="col-md-2">
         <label class="form-label">CNPJ do Órgão (opcional)</label>
         <input id="cnpj" type="text" class="form-control" placeholder="Ex: 26989715000102">
       </div>
-      <div class="col-md-3">
+      <div class="col-md-2">
+        <label class="form-label">UASG Compradora (opcional)</label>
+        <input id="uasg" type="text" class="form-control" placeholder="Ex: 154056">
+      </div>
+      <div class="col-md-2">
         <label class="form-label">Palavra-chave no Objeto (opcional)</label>
         <input id="termo" type="text" class="form-control" placeholder="Ex: manutenção predial">
       </div>
-      <div class="col-md-2">
+      <div class="col-md-1">
         <label class="form-label">Limite por página</label>
         <input id="limite" type="number" class="form-control" value="50" min="1" max="100">
       </div>
       <div class="col-md-1 d-flex align-items-end">
         <button id="buscar" class="btn btn-primary w-100">Buscar</button>
       </div>
-      <div class="col-md-3 mt-3">
+      <div class="col-md-4 mt-3">
         <label class="form-label">Modalidade da Contratação</label>
         <select id="modalidade" class="form-select" required>
           <option value="">Selecione...</option>
@@ -109,7 +113,7 @@ function gerarBlocos(dataInicial, dataFinal) {
 }
 
 // Busca um bloco de resultados
-async function buscarBloco(dataInicial, dataFinal, modalidade, cnpj, limite) {
+async function buscarBloco(dataInicial, dataFinal, modalidade, cnpj, uasg, limite) {
   let pagina = 1;
   let blocoResultados = [];
   let ultimaPagina = false;
@@ -117,6 +121,7 @@ async function buscarBloco(dataInicial, dataFinal, modalidade, cnpj, limite) {
   while (!ultimaPagina) {
     let url = `${API_BASE}?dataInicial=${dataInicial}&dataFinal=${dataFinal}&codigoModalidadeContratacao=${modalidade}&pagina=${pagina}&tamanhoPagina=${limite}`;
     if (cnpj) url += `&cnpj=${cnpj}`;
+    if (uasg) url += `&codigoUasg=${uasg}`;
 
     const resp = await fetch(url);
     if (!resp.ok) throw new Error(`Erro na API: ${resp.status}`);
@@ -139,6 +144,7 @@ document.getElementById("buscar").addEventListener("click", async () => {
   const dataInicial = document.getElementById("dataInicial").value;
   const dataFinal = document.getElementById("dataFinal").value;
   const cnpj = document.getElementById("cnpj").value.trim();
+  const uasg = document.getElementById("uasg").value.trim();
   let limite = parseInt(document.getElementById("limite").value, 10);
   if (!limite || limite <= 0) limite = 50; // valor padrão
   const modalidade = document.getElementById("modalidade").value;
@@ -152,7 +158,7 @@ document.getElementById("buscar").addEventListener("click", async () => {
   try {
     const blocos = gerarBlocos(dataInicial, dataFinal);
     for (const bloco of blocos) {
-      const res = await buscarBloco(bloco.inicio, bloco.fim, modalidade, cnpj, limite);
+      const res = await buscarBloco(bloco.inicio, bloco.fim, modalidade, cnpj, uasg, limite);
       resultados.push(...res);
     }
 
