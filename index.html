@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Consulta PNCP</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+<div class="container py-5">
+  <h1 class="text-center mb-4">Consulta ao PNCP</h1>
+
+  <div class="card p-4 shadow-sm mb-4">
+    <div class="row g-3">
+      <div class="col-md-3">
+        <label class="form-label">Data Inicial</label>
+        <input id="dataInicial" type="date" class="form-control" required>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Data Final</label>
+        <input id="dataFinal" type="date" class="form-control" required>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">CNPJ do Órgão (opcional)</label>
+        <input id="cnpj" type="text" class="form-control" placeholder="Ex: 26989715000102">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Palavra-chave no Objeto (opcional)</label>
+        <input id="termo" type="text" class="form-control" placeholder="Ex: manutenção predial">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Limite por página</label>
+        <input id="limite" type="number" class="form-control" value="50" min="1" max="100">
+      </div>
+      <div class="col-md-1 d-flex align-items-end">
+        <button id="buscar" class="btn btn-primary w-100">Buscar</button>
+      </div>
+      <div class="col-md-3 mt-3">
+        <label class="form-label">Modalidade da Contratação</label>
+        <select id="modalidade" class="form-select" required>
+          <option value="">Selecione...</option>
+          <option value="1">Leilão - Eletrônico</option>
+          <option value="2">Diálogo Competitivo</option>
+          <option value="3">Concurso</option>
+          <option value="4">Concorrência - Eletrônica</option>
+          <option value="5">Concorrência - Presencial</option>
+          <option value="6">Pregão - Eletrônico</option>
+          <option value="7">Pregão - Presencial</option>
+          <option value="8">Dispensa de Licitação</option>
+          <option value="9">Inexigibilidade</option>
+          <option value="10">Manifestação de Interesse</option>
+          <option value="11">Pré-qualificação</option>
+          <option value="12">Credenciamento</option>
+          <option value="13">Leilão - Presencial</option>
+          <option value="14">Inaplicabilidade da Licitação</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div id="resultado" style="display:none;">
+    <div class="d-flex justify-content-between mb-2">
+      <h4>Resultados</h4>
+      <button id="baixarCsv" class="btn btn-success btn-sm">Baixar CSV</button>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-bordered table-striped">
+        <thead class="table-dark">
+          <tr>
+            <th>Número</th>
+            <th>Objeto</th>
+            <th>Data Publicação</th>
+            <th>Órgão</th>
+            <th>Modalidade</th>
+            <th>Valor Homologado</th>
+            <th>Link</th>
+          </tr>
+        </thead>
+        <tbody id="tabelaResultados"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+const API_BASE = "https://pncp.gov.br/api/consulta/v1/contratacoes/publicacao";
+let resultados = [];
+
+// Converte YYYY-MM-DD para YYYYMMDD
+function formatarData(data) {
+  return data.replace(/-/g, '');
+}
+
+// Divide períodos maiores que 365 dias
+function gerarBlocos(dataInicial, dataFinal) {
+  const blocos = [];
+  let inicio = new Date(dataInicial);
+  const fim = new Date(dataFinal);
+
+  while (inicio <= fim) {
+    const blocoFim = new Date(Math.min(inicio.getTime() + 364*24*60*60*1000, fim.getTime()));
+    blocos.push({
+      inicio: formatarData(inicio.toISOString().slice(0,10)),
+      fim: formatarData(blocoFim.toISOString().slice(0,10))
+    });
+    inicio = new Date(blocoFim.getTime() + 24*60*60*1000);
+  }
+  return blocos;
+}
+
+// Busca um bloco de resultados
+async function buscarBloco(dataInicial, dataFinal, modalidade, cnpj, limite) {
+  let pagina = 1;
+  let blocoResultados = [];
+  let ultimaPagina = false;
+
+  while (!ultimaPagina) {
+    let url = `${API_BASE}?dataInicial=${dataInicial}&dataFinal=${dataFinal}&codigoModalidadeContratacao=${modalidade}&pagina=${pagina}&tamanhoPagina=${limite}`;
+    if (cnpj) url += `&cnpj=${cnpj}`;
+
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`Erro na API: ${resp.status}`);
+    const json = await resp.json();
+
+    blocoResultados.push(...json.data);
+    ultimaPagina = json.last || true;
+    pagina++;
+  }
+
+  return blocoResultados;
+}
+
+document.getElementById("buscar").addEventListener("click", async () => {
+  resultados = [];
+  const tabela = document.getElementById("tabelaResultados");
+  tabela.innerHTML = "";
+  document.getElementById("resultado").style.display = "none";
+
+  const dataInicial = document.getElementById("dataInicial").value;
+  const dataFinal = document.getElementById("dataFinal").value;
+  const cnpj = document.getElementById("cnpj").value.trim();
+  let limite = parseInt(document.getElementById("limite").value, 10);
+  if (!limite || limite <= 0) limite = 50; // valor padrão
+  const modalidade = document.getElementById("modalidade").value;
+  const termo = document.getElementById("termo").value.trim().toLowerCase();
+
+  if (!dataInicial || !dataFinal || !modalidade) {
+    alert("Informe datas e modalidade obrigatórias.");
+    return;
+  }
+
+  try {
+    const blocos = gerarBlocos(dataInicial, dataFinal);
+    for (const bloco of blocos) {
+      const res = await buscarBloco(bloco.inicio, bloco.fim, modalidade, cnpj, limite);
+      resultados.push(...res);
+    }
+
+    // Filtra por palavra-chave no objetoCompra
+    let resultadosFiltrados = resultados;
+    if (termo) {
+      resultadosFiltrados = resultados.filter(item => 
+        item.objetoCompra && item.objetoCompra.toLowerCase().includes(termo)
+      );
+    }
+
+    resultadosFiltrados.forEach(item => {
+      tabela.innerHTML += `
+        <tr>
+          <td>${item.numeroCompra}</td>
+          <td>${item.objetoCompra || "-"}</td>
+          <td>${item.dataPublicacaoPncp || "-"}</td>
+          <td>${item.orgaoEntidade?.razaoSocial || "-"}</td>
+          <td>${item.modalidadeNome || "-"}</td>
+          <td>${item.valorTotalHomologado !== null ? item.valorTotalHomologado.toLocaleString('pt-BR',{style:'currency',currency:'BRL'}) : "-"}</td>
+          <td>${item.linkSistemaOrigem ? `<a href="${item.linkSistemaOrigem}" target="_blank">Link</a>` : "-"}</td>
+        </tr>`;
+    });
+
+    document.getElementById("resultado").style.display = "block";
+  } catch (erro) {
+    alert("Erro: " + erro.message);
+  }
+});
+
+document.getElementById("baixarCsv").addEventListener("click", () => {
+  if (resultados.length === 0) {
+    alert("Nenhum dado para exportar.");
+    return;
+  }
+
+  const termo = document.getElementById("termo").value.trim().toLowerCase();
+  let resultadosFiltrados = resultados;
+  if (termo) {
+    resultadosFiltrados = resultados.filter(item => 
+      item.objetoCompra && item.objetoCompra.toLowerCase().includes(termo)
+    );
+  }
+
+  const csv = [
+    ["Número","Objeto","Data Publicação","Órgão","Modalidade","Valor Homologado","Link"],
+    ...resultadosFiltrados.map(item => [
+      `"${item.numeroCompra}"`,
+      `"${item.objetoCompra || ""}"`,
+      `"${item.dataPublicacaoPncp || ""}"`,
+      `"${item.orgaoEntidade?.razaoSocial || ""}"`,
+      `"${item.modalidadeNome || ""}"`,
+      `"${item.valorTotalHomologado !== null ? item.valorTotalHomologado : ""}"`,
+      `"${item.linkSistemaOrigem || ""}"`
+    ])
+  ].map(linha => linha.join(",")).join("\n");
+
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "compras_pncp.csv";
+  link.click();
+});
+</script>
+</body>
+</html>
